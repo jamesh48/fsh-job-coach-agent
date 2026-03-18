@@ -11,13 +11,23 @@ A local Electron desktop app that acts as an AI agent bridge for your job search
 - **WebSocket + HTTP server** — exposes all events on `ws://localhost:3001` and a REST health endpoint at `http://localhost:3001/health`
 - **System tray** — runs quietly in the background with a tray icon for quick access
 
-## Prerequisites
+---
 
-- Node.js 18 or later
-- A Google Cloud project with the Gmail API and Google Calendar API enabled
-- OAuth 2.0 credentials (Desktop app type)
+## For Release Users
 
-## Google Cloud Setup
+This section is for people who downloaded the `.dmg` from the [Releases page](../../releases).
+
+### Install
+
+1. Download the latest `.dmg` from the [Releases page](../../releases)
+2. Open the `.dmg` and drag **FSH Agent** to your Applications folder
+3. Launch the app
+
+> **macOS security warning:** Because the app is not code-signed, macOS may block it with an "unidentified developer" message. To bypass: right-click (or Control-click) the app icon → **Open** → **Open** again in the dialog.
+
+### Google Cloud Setup
+
+The app needs OAuth credentials from a Google Cloud project to access your Gmail and Calendar. This is a one-time setup.
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or select an existing one)
 2. Navigate to **APIs & Services > Library**
@@ -26,22 +36,15 @@ A local Electron desktop app that acts as an AI agent bridge for your job search
 5. Navigate to **APIs & Services > Credentials**
 6. Click **Create Credentials > OAuth 2.0 Client ID**
 7. Set Application type to **Desktop app**
-8. Give it a name (e.g., "FSH Agent")
-9. Click **Create**
-10. Copy your **Client ID** and **Client Secret**
-11. Under **APIs & Services > OAuth consent screen**, add your Google account as a test user (if the app is in testing mode)
-12. No redirect URI configuration needed — Desktop app credentials automatically allow `http://localhost` redirects
+8. Give it a name (e.g., "FSH Agent") and click **Create**
+9. Copy your **Client ID** and **Client Secret**
+10. Under **APIs & Services > OAuth consent screen**, add your Google account as a test user (required while the app is in testing mode)
 
-## Installation
+No redirect URI configuration is needed — Desktop app credentials automatically allow `http://localhost` redirects.
 
-```bash
-npm install
-npm run dev
-```
+### First-Time Setup in the App
 
-## First-Time Setup
-
-1. Launch the app with `npm run dev`
+1. Open FSH Agent
 2. Click **Show** next to Settings at the bottom of the dashboard
 3. Paste your **Google Client ID** and **Google Client Secret**
 4. Set your preferred **FSH Backend URL** (defaults to `https://fshjobcoach.com`)
@@ -50,6 +53,63 @@ npm run dev
 7. Click **Connect Google** — your browser will open the Google OAuth consent screen
 8. Grant the requested permissions
 9. Return to the app — it will show "Google Connected" and begin monitoring
+
+---
+
+## For Developers
+
+This section is for people building or modifying the app from source.
+
+### Prerequisites
+
+- [nvm](https://github.com/nvm-sh/nvm) with Node.js 24 (`nvm use 24`)
+- A Google Cloud project with OAuth credentials (see Google Cloud Setup above)
+
+### Setup
+
+```bash
+nvm use 24
+npm install
+npm run dev
+```
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Start app in development mode (electron-vite dev) |
+| `npm run build` | Production build to `out/` |
+| `npm run package` | Package macOS `.dmg` to `release/` (requires build first) |
+| `yarn lint` | Check for linting issues (Biome) |
+| `yarn lint:fix` | Check and auto-fix linting issues |
+| `yarn format` | Format source files |
+
+Always run Biome after editing source files.
+
+### Releases
+
+Releases are automated via `.github/workflows/release.yml`. Push a version tag to trigger:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+GitHub Actions builds on `macos-latest`, runs `electron-builder`, and uploads the `.dmg` (x64 + arm64) to a GitHub Release.
+
+### Architecture
+
+- `src/main/` — Electron main process (Node.js). All system access lives here: OAuth, Gmail, Calendar, Downloads watcher, WebSocket server, IPC handlers.
+- `src/preload/index.ts` — Exposes a typed `window.fshAgent` bridge to the renderer via `contextBridge`.
+- `src/renderer/` — React UI. Communicates with main exclusively through `window.fshAgent`.
+
+### Key Patterns
+
+- `browserWindow` can be `null` after the user closes it — always check and recreate with `createBrowserWindow()` before use, then use `!` non-null assertion on subsequent accesses.
+- Events flow through `broadcast()` (WebSocket) + `mainWindow.webContents.send('event', ...)` (IPC to renderer) in parallel.
+- `electron-store` (encrypted) holds tokens and settings. Access via `store.get` / `store.set` / `store.delete`.
+
+---
 
 ## WebSocket API
 
@@ -91,11 +151,3 @@ Updates a config value in the store.
 
 - `GET http://localhost:3001/health` — returns `{ "status": "ok", "clients": N }`
 - `GET http://localhost:3001/oauth/callback` — used internally by the OAuth flow
-
-## Build for Production
-
-```bash
-npm run build
-```
-
-Output goes to `out/`. To package into a distributable, add `electron-builder` or `electron-forge` to the project.
