@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+
+# TypeScript build cache
+tsconfig.node.tsbuildinfo
+tsconfig.web.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories
+.vscode/
+.idea/
+
+# Electron packager output
+release/
