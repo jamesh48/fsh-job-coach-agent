@@ -17,12 +17,12 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: yarn build
 
       - name: Package
-        run: npm run package
+        run: yarn package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
