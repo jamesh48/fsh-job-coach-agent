@@ -40,6 +40,10 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
 	agent_status: '#6b7280',
 }
 
+const POLL_INTERVALS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
+const snapToInterval = (value: number): number =>
+	POLL_INTERVALS.find((n) => n >= value) ?? 60
+
 export default function App(): JSX.Element {
 	const [authStatus, setAuthStatus] = useState(false)
 	const [backendConnected, setBackendConnected] = useState(false)
@@ -63,7 +67,13 @@ export default function App(): JSX.Element {
 		window.fshAgent
 			.getBackendStatus()
 			.then((s) => setBackendConnected(s.connected))
-		window.fshAgent.getSettings().then(setSettings)
+		window.fshAgent.getSettings().then((s) =>
+			setSettings({
+				...s,
+				gmailPollInterval: snapToInterval(s.gmailPollInterval),
+				calendarPollInterval: snapToInterval(s.calendarPollInterval),
+			}),
+		)
 
 		// Listen for events
 		const cleanupEvents = window.fshAgent.onEvent(addEvent)
@@ -447,12 +457,9 @@ export default function App(): JSX.Element {
 									<label htmlFor="gmailPollInterval" style={styles.label}>
 										Gmail Poll Interval (minutes)
 									</label>
-									<input
+									<select
 										id="gmailPollInterval"
 										style={styles.input}
-										type="number"
-										min={1}
-										max={60}
 										value={settings.gmailPollInterval}
 										onChange={(e) =>
 											setSettings({
@@ -460,18 +467,21 @@ export default function App(): JSX.Element {
 												gmailPollInterval: Number(e.target.value),
 											})
 										}
-									/>
+									>
+										{POLL_INTERVALS.map((n) => (
+											<option key={n} value={n}>
+												{n}
+											</option>
+										))}
+									</select>
 								</div>
 								<div style={{ flex: 1 }}>
 									<label htmlFor="calendarPollInterval" style={styles.label}>
 										Calendar Poll Interval (minutes)
 									</label>
-									<input
+									<select
 										id="calendarPollInterval"
 										style={styles.input}
-										type="number"
-										min={1}
-										max={60}
 										value={settings.calendarPollInterval}
 										onChange={(e) =>
 											setSettings({
@@ -479,7 +489,13 @@ export default function App(): JSX.Element {
 												calendarPollInterval: Number(e.target.value),
 											})
 										}
-									/>
+									>
+										{POLL_INTERVALS.map((n) => (
+											<option key={n} value={n}>
+												{n}
+											</option>
+										))}
+									</select>
 								</div>
 							</div>
 							<div style={{ marginTop: '16px' }}>

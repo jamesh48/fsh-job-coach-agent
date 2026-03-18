@@ -3,6 +3,7 @@ import { google } from 'googleapis'
 import { getAuthClient, refreshTokensIfNeeded } from './oauth'
 
 let pollInterval: ReturnType<typeof setInterval> | null = null
+let alignTimeout: ReturnType<typeof setTimeout> | null = null
 
 export interface CalendarEvent {
 	id: string
@@ -78,11 +79,27 @@ export function startCalendarWatcher(
 	}
 
 	const intervalMinutes = store.get('calendarPollInterval', 15) as number
+	const intervalMs = intervalMinutes * 60 * 1000
 	poll()
-	pollInterval = setInterval(poll, intervalMinutes * 60 * 1000)
+	const now = new Date()
+	const minutesToNextMark =
+		intervalMinutes - (now.getMinutes() % intervalMinutes)
+	const msUntilNextMark =
+		minutesToNextMark * 60 * 1000 -
+		now.getSeconds() * 1000 -
+		now.getMilliseconds()
+	alignTimeout = setTimeout(() => {
+		alignTimeout = null
+		poll()
+		pollInterval = setInterval(poll, intervalMs)
+	}, msUntilNextMark)
 }
 
 export function stopCalendarWatcher(): void {
+	if (alignTimeout) {
+		clearTimeout(alignTimeout)
+		alignTimeout = null
+	}
 	if (pollInterval) {
 		clearInterval(pollInterval)
 		pollInterval = null
