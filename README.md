@@ -6,8 +6,8 @@ A local Electron desktop app that acts as an AI agent bridge for your job search
 
 - **Gmail monitoring** — polls your inbox for emails with subjects matching interview, offer, application, recruiter, or hiring keywords
 - **Google Calendar monitoring** — watches your next 7 days of events and flags anything that looks like an interview or recruiter call
-- **Job page capture** — opens a built-in browser window; automatically captures job listings when you land on supported job sites (LinkedIn, Indeed, Greenhouse, Lever, Workday, Wellfound)
-- **PDF watcher** — monitors your Downloads folder and forwards any new PDF files as base64 payloads via WebSocket
+- **Job page capture** *(in development)* — opens a built-in browser window; automatically captures job listings when you land on supported job sites (LinkedIn, Indeed, Greenhouse, Lever, Workday, Wellfound)
+- **PDF watcher** *(in development)* — monitors your Downloads folder and forwards any new PDF files as base64 payloads via WebSocket
 - **WebSocket + HTTP server** — exposes all events on `ws://localhost:3001` and a REST health endpoint at `http://localhost:3001/health`
 - **System tray** — runs quietly in the background with a tray icon for quick access
 
@@ -53,6 +53,20 @@ No redirect URI configuration is needed — Desktop app credentials automaticall
 7. Click **Connect Google** — your browser will open the Google OAuth consent screen
 8. Grant the requested permissions
 9. Return to the app — it will show "Google Connected" and begin monitoring
+
+### Agent Secret
+
+The desktop agent connects to the FSH web app via WebSocket and must authenticate with a shared secret. This is separate from your Anthropic API key — the API key lives entirely in the web app and the agent never needs it.
+
+**Step 1 — Set the secret in the web app**
+
+In the FSH web app, go to **Settings → Security** and set an Agent Secret. This is the value the web app will require from any connecting agent.
+
+**Step 2 — Enter the same secret in the desktop app**
+
+In FSH Agent, open Settings and paste the same secret into the **Agent Secret** field, then click **Save Settings**.
+
+The agent stores the secret locally and sends it as a query parameter when connecting (`/ws/agent?secret=<your-secret>`). If the secret is missing from the agent settings, no connection will be attempted. If it doesn't match what the web app expects, the WebSocket connection will be rejected.
 
 ---
 
