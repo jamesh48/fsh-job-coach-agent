@@ -1,4 +1,83 @@
+import {
+	AccountCircleOutlined,
+	CableOutlined,
+	CalendarMonthOutlined,
+	CancelOutlined,
+	CheckCircleOutlined,
+	ChevronRight,
+	DescriptionOutlined,
+	FolderOutlined,
+	LinkOutlined,
+	SaveOutlined,
+	SearchOutlined,
+	SettingsOutlined,
+	WorkOutlined,
+} from '@mui/icons-material'
+import {
+	Alert,
+	AppBar,
+	Box,
+	Button,
+	Card,
+	CardContent,
+	Chip,
+	CircularProgress,
+	Collapse,
+	CssBaseline,
+	createTheme,
+	Divider,
+	IconButton,
+	InputAdornment,
+	List,
+	ListItem,
+	ListItemIcon,
+	ListItemText,
+	MenuItem,
+	Select,
+	Snackbar,
+	Stack,
+	TextField,
+	ThemeProvider,
+	Toolbar,
+	Tooltip,
+	Typography,
+} from '@mui/material'
 import { useCallback, useEffect, useState } from 'react'
+
+const theme = createTheme({
+	palette: {
+		mode: 'dark',
+		primary: { main: '#3b82f6' },
+		success: { main: '#10b981' },
+		warning: { main: '#f59e0b' },
+		error: { main: '#ef4444' },
+		background: {
+			default: '#0f172a',
+			paper: '#1e293b',
+		},
+		divider: '#334155',
+		text: {
+			primary: '#f1f5f9',
+			secondary: '#94a3b8',
+		},
+	},
+	shape: { borderRadius: 10 },
+	components: {
+		MuiCard: {
+			styleOverrides: {
+				root: { border: '1px solid #334155' },
+			},
+		},
+		MuiOutlinedInput: {
+			styleOverrides: {
+				root: {
+					'& fieldset': { borderColor: '#334155' },
+					'&:hover fieldset': { borderColor: '#475569' },
+				},
+			},
+		},
+	},
+})
 
 interface AgentEvent {
 	type: string
@@ -13,6 +92,7 @@ interface Settings {
 	googleClientId?: string
 	googleClientSecret?: string
 	agentSecret?: string
+	filesWatchDir?: string
 }
 
 declare global {
@@ -32,12 +112,40 @@ declare global {
 	}
 }
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
-	job_captured: '#10b981',
-	email_detected: '#3b82f6',
-	calendar_event: '#8b5cf6',
-	new_pdf: '#f59e0b',
-	agent_status: '#6b7280',
+const EVENT_META: Record<
+	string,
+	{ label: string; color: string; icon: React.ReactNode }
+> = {
+	job_captured: {
+		label: 'Job',
+		color: '#10b981',
+		icon: <WorkOutlined fontSize="small" />,
+	},
+	email_detected: {
+		label: 'Email',
+		color: '#3b82f6',
+		icon: <DescriptionOutlined fontSize="small" />,
+	},
+	calendar_event: {
+		label: 'Calendar',
+		color: '#8b5cf6',
+		icon: <CalendarMonthOutlined fontSize="small" />,
+	},
+	new_pdf: {
+		label: 'PDF',
+		color: '#f59e0b',
+		icon: <DescriptionOutlined fontSize="small" />,
+	},
+	file_added: {
+		label: 'File',
+		color: '#06b6d4',
+		icon: <FolderOutlined fontSize="small" />,
+	},
+	agent_status: {
+		label: 'Status',
+		color: '#6b7280',
+		icon: <CableOutlined fontSize="small" />,
+	},
 }
 
 const POLL_INTERVALS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60]
@@ -55,14 +163,17 @@ export default function App(): JSX.Element {
 	})
 	const [showSettings, setShowSettings] = useState(false)
 	const [connecting, setConnecting] = useState(false)
-	const [settingsSaved, setSettingsSaved] = useState(false)
+	const [snackbar, setSnackbar] = useState<{
+		open: boolean
+		message: string
+		severity: 'success' | 'error'
+	}>({ open: false, message: '', severity: 'success' })
 
 	const addEvent = useCallback((event: AgentEvent) => {
-		setEvents((prev) => [event, ...prev].slice(0, 10))
+		setEvents((prev) => [event, ...prev].slice(0, 20))
 	}, [])
 
 	useEffect(() => {
-		// Load initial state
 		window.fshAgent.getAuthStatus().then((s) => setAuthStatus(s.connected))
 		window.fshAgent
 			.getBackendStatus()
@@ -75,7 +186,6 @@ export default function App(): JSX.Element {
 			}),
 		)
 
-		// Listen for events
 		const cleanupEvents = window.fshAgent.onEvent(addEvent)
 		const cleanupBackend = window.fshAgent.onBackendStatus(setBackendConnected)
 		return () => {
@@ -91,7 +201,11 @@ export default function App(): JSX.Element {
 			if (result.success) {
 				setAuthStatus(true)
 			} else {
-				alert(result.error || 'OAuth failed')
+				setSnackbar({
+					open: true,
+					message: result.error || 'OAuth failed',
+					severity: 'error',
+				})
 			}
 		} finally {
 			setConnecting(false)
@@ -105,313 +219,325 @@ export default function App(): JSX.Element {
 
 	const handleSaveSettings = async (): Promise<void> => {
 		await window.fshAgent.saveSettings(settings)
-		setSettingsSaved(true)
-		setTimeout(() => setSettingsSaved(false), 2000)
-	}
-
-	const styles = {
-		app: {
-			fontFamily:
-				'-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-			background: '#0f172a',
-			color: '#e2e8f0',
-			minHeight: '100vh',
-			padding: '0',
-		} as React.CSSProperties,
-		header: {
-			background: '#1e293b',
-			borderBottom: '1px solid #334155',
-			padding: '16px 24px',
-			display: 'flex',
-			alignItems: 'center',
-			justifyContent: 'space-between',
-		} as React.CSSProperties,
-		title: {
-			margin: 0,
-			fontSize: '20px',
-			fontWeight: 700,
-			color: '#f1f5f9',
-			letterSpacing: '-0.5px',
-		} as React.CSSProperties,
-		badge: (color: string) =>
-			({
-				display: 'inline-flex',
-				alignItems: 'center',
-				gap: '6px',
-				background: `${color}20`,
-				color: color,
-				border: `1px solid ${color}40`,
-				borderRadius: '20px',
-				padding: '4px 12px',
-				fontSize: '12px',
-				fontWeight: 600,
-			}) as React.CSSProperties,
-		dot: (color: string) =>
-			({
-				width: '6px',
-				height: '6px',
-				borderRadius: '50%',
-				background: color,
-			}) as React.CSSProperties,
-		main: {
-			padding: '24px',
-			maxWidth: '800px',
-			margin: '0 auto',
-		} as React.CSSProperties,
-		card: {
-			background: '#1e293b',
-			border: '1px solid #334155',
-			borderRadius: '12px',
-			padding: '20px',
-			marginBottom: '16px',
-		} as React.CSSProperties,
-		cardTitle: {
-			margin: '0 0 16px 0',
-			fontSize: '14px',
-			fontWeight: 600,
-			color: '#94a3b8',
-			textTransform: 'uppercase' as const,
-			letterSpacing: '0.5px',
-		},
-		btn: (variant: 'primary' | 'danger' | 'secondary') => {
-			const colors = {
-				primary: { bg: '#3b82f6', hover: '#2563eb' },
-				danger: { bg: '#ef4444', hover: '#dc2626' },
-				secondary: { bg: '#334155', hover: '#475569' },
-			}
-			return {
-				padding: '8px 16px',
-				borderRadius: '8px',
-				border: 'none',
-				background: colors[variant].bg,
-				color: '#fff',
-				fontWeight: 600,
-				fontSize: '14px',
-				cursor: 'pointer',
-				transition: 'background 0.15s',
-			} as React.CSSProperties
-		},
-		input: {
-			width: '100%',
-			padding: '8px 12px',
-			background: '#0f172a',
-			border: '1px solid #334155',
-			borderRadius: '8px',
-			color: '#e2e8f0',
-			fontSize: '14px',
-			boxSizing: 'border-box' as const,
-		} as React.CSSProperties,
-		label: {
-			display: 'block',
-			fontSize: '13px',
-			color: '#94a3b8',
-			marginBottom: '6px',
-		} as React.CSSProperties,
-		formGroup: {
-			marginBottom: '14px',
-		} as React.CSSProperties,
-		eventItem: {
-			display: 'flex',
-			alignItems: 'flex-start',
-			gap: '12px',
-			padding: '10px 0',
-			borderBottom: '1px solid #1e293b',
-		} as React.CSSProperties,
-		eventBadge: (type: string) =>
-			({
-				flexShrink: 0,
-				padding: '2px 8px',
-				borderRadius: '4px',
-				fontSize: '11px',
-				fontWeight: 600,
-				background: `${EVENT_TYPE_COLORS[type] || '#6b7280'}20`,
-				color: EVENT_TYPE_COLORS[type] || '#6b7280',
-				border: `1px solid ${EVENT_TYPE_COLORS[type] || '#6b7280'}40`,
-			}) as React.CSSProperties,
-		row: {
-			display: 'flex',
-			gap: '12px',
-			alignItems: 'center',
-		} as React.CSSProperties,
+		setSnackbar({ open: true, message: 'Settings saved', severity: 'success' })
 	}
 
 	return (
-		<div style={styles.app}>
-			<div style={styles.header}>
-				<h1 style={styles.title}>FSH Agent</h1>
-				<div style={styles.row}>
-					<span style={styles.badge(authStatus ? '#10b981' : '#6b7280')}>
-						<span style={styles.dot(authStatus ? '#10b981' : '#6b7280')} />
-						{authStatus ? 'Google Connected' : 'Google Disconnected'}
-					</span>
-					<span style={styles.badge(backendConnected ? '#10b981' : '#6b7280')}>
-						<span
-							style={styles.dot(backendConnected ? '#10b981' : '#6b7280')}
-						/>
-						{backendConnected ? 'Backend Connected' : 'Backend Disconnected'}
-					</span>
-				</div>
-			</div>
+		<ThemeProvider theme={theme}>
+			<CssBaseline />
 
-			<div style={styles.main}>
-				{/* Auth Card */}
-				<div style={styles.card}>
-					<p style={styles.cardTitle}>Google Authentication</p>
-					<div style={styles.row}>
-						<span style={{ flex: 1, fontSize: '14px', color: '#94a3b8' }}>
-							{authStatus
-								? 'Connected to Gmail and Google Calendar'
-								: 'Connect to enable email and calendar monitoring'}
-						</span>
-						{authStatus ? (
-							<button
-								type="button"
-								style={styles.btn('danger')}
-								onClick={handleDisconnect}
+			{/* Header */}
+			<AppBar
+				position="static"
+				elevation={0}
+				sx={{ borderBottom: '1px solid', borderColor: 'divider' }}
+			>
+				<Toolbar sx={{ gap: 1.5 }}>
+					<Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
+						FSH Agent
+					</Typography>
+					<Chip
+						size="small"
+						icon={authStatus ? <CheckCircleOutlined /> : <CancelOutlined />}
+						label={authStatus ? 'Google Connected' : 'Google Disconnected'}
+						color={authStatus ? 'success' : 'default'}
+						variant="outlined"
+					/>
+					<Chip
+						size="small"
+						icon={
+							backendConnected ? <CheckCircleOutlined /> : <CancelOutlined />
+						}
+						label={
+							backendConnected ? 'Backend Connected' : 'Backend Disconnected'
+						}
+						color={backendConnected ? 'success' : 'default'}
+						variant="outlined"
+					/>
+				</Toolbar>
+			</AppBar>
+
+			<Box
+				sx={{
+					maxWidth: 820,
+					mx: 'auto',
+					p: 3,
+					display: 'flex',
+					flexDirection: 'column',
+					gap: 2,
+				}}
+			>
+				{/* Google Auth */}
+				<Card>
+					<CardContent>
+						<Stack direction="row" alignItems="center" spacing={1} mb={1.5}>
+							<AccountCircleOutlined color="primary" />
+							<Typography
+								variant="subtitle2"
+								color="text.secondary"
+								fontWeight={700}
+								textTransform="uppercase"
+								letterSpacing={0.5}
 							>
-								Disconnect
-							</button>
-						) : (
-							<button
-								type="button"
-								style={styles.btn('primary')}
-								onClick={handleConnect}
-								disabled={connecting}
+								Google Authentication
+							</Typography>
+						</Stack>
+						<Stack direction="row" alignItems="center" spacing={2}>
+							<Typography
+								variant="body2"
+								color="text.secondary"
+								sx={{ flex: 1 }}
 							>
-								{connecting ? 'Opening browser...' : 'Connect Google'}
-							</button>
-						)}
-					</div>
-					{!authStatus && (
-						<p
-							style={{
-								fontSize: '12px',
-								color: '#64748b',
-								marginTop: '10px',
-								marginBottom: 0,
-							}}
-						>
-							Requires Google Client ID &amp; Secret — configure in Settings
-							below
-						</p>
-					)}
-				</div>
-
-				{/* Actions Card */}
-				<div style={styles.card}>
-					<p style={styles.cardTitle}>Actions</p>
-					<div style={styles.row}>
-						<button
-							type="button"
-							style={styles.btn('secondary')}
-							onClick={() => window.fshAgent.captureCurrentPage()}
-						>
-							Capture Current Page
-						</button>
-						<button
-							type="button"
-							style={styles.btn('secondary')}
-							onClick={() =>
-								window.fshAgent.navigateBrowser('https://linkedin.com/jobs')
-							}
-						>
-							Open LinkedIn Jobs
-						</button>
-						<button
-							type="button"
-							style={styles.btn('secondary')}
-							onClick={() =>
-								window.fshAgent.navigateBrowser('https://indeed.com')
-							}
-						>
-							Open Indeed
-						</button>
-					</div>
-				</div>
-
-				{/* Events Feed */}
-				<div style={styles.card}>
-					<p style={styles.cardTitle}>Recent Events ({events.length})</p>
-					{events.length === 0 ? (
-						<p style={{ color: '#475569', fontSize: '14px', margin: 0 }}>
-							No events yet. Events will appear here as they are detected.
-						</p>
-					) : (
-						<div>
-							{events.map((event) => (
-								<div
-									key={`${event.type}-${event.timestamp}`}
-									style={styles.eventItem}
+								{authStatus
+									? 'Connected to Gmail and Google Calendar'
+									: 'Connect to enable email and calendar monitoring'}
+							</Typography>
+							{authStatus ? (
+								<Button
+									variant="outlined"
+									color="error"
+									size="small"
+									startIcon={<CancelOutlined />}
+									onClick={handleDisconnect}
 								>
-									<span style={styles.eventBadge(event.type)}>
-										{event.type}
-									</span>
-									<div style={{ flex: 1, minWidth: 0 }}>
-										<div
-											style={{
-												fontSize: '13px',
-												color: '#cbd5e1',
-												wordBreak: 'break-all',
-											}}
-										>
-											{JSON.stringify(event.payload).substring(0, 100)}
-										</div>
-										<div
-											style={{
-												fontSize: '11px',
-												color: '#475569',
-												marginTop: '2px',
-											}}
-										>
-											{new Date(event.timestamp).toLocaleTimeString()}
-										</div>
-									</div>
-								</div>
-							))}
-						</div>
-					)}
-				</div>
+									Disconnect
+								</Button>
+							) : (
+								<Button
+									variant="contained"
+									size="small"
+									startIcon={
+										connecting ? (
+											<CircularProgress size={14} color="inherit" />
+										) : (
+											<AccountCircleOutlined />
+										)
+									}
+									onClick={handleConnect}
+									disabled={connecting}
+								>
+									{connecting ? 'Opening browser...' : 'Connect Google'}
+								</Button>
+							)}
+						</Stack>
+						{!authStatus && (
+							<Typography
+								variant="caption"
+								color="text.disabled"
+								display="block"
+								mt={1}
+							>
+								Requires Google Client ID &amp; Secret — configure in Settings
+								below
+							</Typography>
+						)}
+					</CardContent>
+				</Card>
+
+				{/* Actions */}
+				<Card>
+					<CardContent>
+						<Stack direction="row" alignItems="center" spacing={1} mb={1.5}>
+							<SearchOutlined color="primary" />
+							<Typography
+								variant="subtitle2"
+								color="text.secondary"
+								fontWeight={700}
+								textTransform="uppercase"
+								letterSpacing={0.5}
+							>
+								Actions
+							</Typography>
+						</Stack>
+						<Stack direction="row" spacing={1} flexWrap="wrap">
+							<Button
+								variant="outlined"
+								size="small"
+								startIcon={<LinkOutlined />}
+								onClick={() => window.fshAgent.captureCurrentPage()}
+							>
+								Capture Current Page
+							</Button>
+							<Button
+								variant="outlined"
+								size="small"
+								startIcon={<WorkOutlined />}
+								onClick={() =>
+									window.fshAgent.navigateBrowser('https://linkedin.com/jobs')
+								}
+							>
+								LinkedIn Jobs
+							</Button>
+							<Button
+								variant="outlined"
+								size="small"
+								startIcon={<SearchOutlined />}
+								onClick={() =>
+									window.fshAgent.navigateBrowser('https://indeed.com')
+								}
+							>
+								Indeed
+							</Button>
+						</Stack>
+					</CardContent>
+				</Card>
+
+				{/* Events */}
+				<Card>
+					<CardContent sx={{ pb: '12px !important' }}>
+						<Stack direction="row" alignItems="center" spacing={1} mb={1}>
+							<CableOutlined color="primary" />
+							<Typography
+								variant="subtitle2"
+								color="text.secondary"
+								fontWeight={700}
+								textTransform="uppercase"
+								letterSpacing={0.5}
+							>
+								Recent Events
+							</Typography>
+							{events.length > 0 && (
+								<Chip
+									label={events.length}
+									size="small"
+									sx={{ ml: 'auto !important', height: 20, fontSize: 11 }}
+								/>
+							)}
+						</Stack>
+						{events.length === 0 ? (
+							<Typography variant="body2" color="text.disabled" py={1}>
+								No events yet. Events will appear here as they are detected.
+							</Typography>
+						) : (
+							<List disablePadding dense>
+								{events.map((event, i) => {
+									const meta = EVENT_META[event.type]
+									return (
+										<>
+											<ListItem
+												key={`${event.type}-${event.timestamp}`}
+												disableGutters
+												alignItems="flex-start"
+												sx={{ py: 0.75 }}
+											>
+												<ListItemIcon
+													sx={{
+														minWidth: 36,
+														mt: 0.25,
+														color: meta?.color ?? '#6b7280',
+													}}
+												>
+													{meta?.icon ?? <CableOutlined fontSize="small" />}
+												</ListItemIcon>
+												<ListItemText
+													primary={
+														<Stack
+															direction="row"
+															alignItems="center"
+															spacing={1}
+														>
+															<Chip
+																label={meta?.label ?? event.type}
+																size="small"
+																sx={{
+																	height: 18,
+																	fontSize: 10,
+																	fontWeight: 700,
+																	bgcolor: `${meta?.color ?? '#6b7280'}20`,
+																	color: meta?.color ?? '#6b7280',
+																	border: `1px solid ${meta?.color ?? '#6b7280'}40`,
+																}}
+															/>
+															<Typography
+																variant="caption"
+																color="text.disabled"
+															>
+																{new Date(event.timestamp).toLocaleTimeString()}
+															</Typography>
+														</Stack>
+													}
+													secondary={
+														<Typography
+															variant="caption"
+															color="text.secondary"
+															sx={{ wordBreak: 'break-all' }}
+														>
+															{JSON.stringify(event.payload).substring(0, 120)}
+														</Typography>
+													}
+												/>
+											</ListItem>
+											{i < events.length - 1 && (
+												<Divider
+													component="li"
+													sx={{ borderColor: '#1e293b' }}
+												/>
+											)}
+										</>
+									)
+								})}
+							</List>
+						)}
+					</CardContent>
+				</Card>
 
 				{/* Settings */}
-				<div style={styles.card}>
-					<div style={{ ...styles.row, marginBottom: '16px' }}>
-						<p style={{ ...styles.cardTitle, margin: 0 }}>Settings</p>
-						<button
-							type="button"
-							style={{
-								...styles.btn('secondary'),
-								fontSize: '12px',
-								padding: '4px 10px',
-							}}
-							onClick={() => setShowSettings(!showSettings)}
-						>
-							{showSettings ? 'Hide' : 'Show'}
-						</button>
-					</div>
-					{showSettings && (
-						<div>
-							<div style={styles.formGroup}>
-								<label htmlFor="googleClientId" style={styles.label}>
-									Google Client ID
-								</label>
-								<input
-									id="googleClientId"
-									style={styles.input}
-									type="text"
+				<Card>
+					<CardContent
+						sx={{ pb: showSettings ? undefined : '12px !important' }}
+					>
+						<Stack direction="row" alignItems="center" spacing={1}>
+							<SettingsOutlined color="primary" />
+							<Typography
+								variant="subtitle2"
+								color="text.secondary"
+								fontWeight={700}
+								textTransform="uppercase"
+								letterSpacing={0.5}
+								sx={{ flex: 1 }}
+							>
+								Settings
+							</Typography>
+							<Tooltip title={showSettings ? 'Hide' : 'Show'}>
+								<IconButton
+									size="small"
+									onClick={() => setShowSettings(!showSettings)}
+								>
+									<ChevronRight
+										sx={{
+											transform: showSettings ? 'rotate(90deg)' : 'none',
+											transition: 'transform 0.2s',
+										}}
+									/>
+								</IconButton>
+							</Tooltip>
+						</Stack>
+
+						<Collapse in={showSettings}>
+							<Stack spacing={2} mt={2}>
+								<TextField
+									label="Google Client ID"
+									size="small"
+									fullWidth
 									placeholder="your-client-id.apps.googleusercontent.com"
 									value={settings.googleClientId || ''}
 									onChange={(e) =>
 										setSettings({ ...settings, googleClientId: e.target.value })
 									}
+									InputProps={{
+										startAdornment: (
+											<InputAdornment position="start">
+												<AccountCircleOutlined
+													sx={{ fontSize: 16, color: 'text.disabled' }}
+												/>
+											</InputAdornment>
+										),
+									}}
 								/>
-							</div>
-							<div style={styles.formGroup}>
-								<label htmlFor="googleClientSecret" style={styles.label}>
-									Google Client Secret
-								</label>
-								<input
-									id="googleClientSecret"
-									style={styles.input}
+								<TextField
+									label="Google Client Secret"
+									size="small"
+									fullWidth
 									type="password"
 									placeholder="GOCSPX-..."
 									value={settings.googleClientSecret || ''}
@@ -422,28 +548,19 @@ export default function App(): JSX.Element {
 										})
 									}
 								/>
-							</div>
-							<div style={styles.formGroup}>
-								<label htmlFor="fshBackendUrl" style={styles.label}>
-									FSH Backend URL
-								</label>
-								<input
-									id="fshBackendUrl"
-									style={styles.input}
-									type="text"
+								<TextField
+									label="FSH Backend URL"
+									size="small"
+									fullWidth
 									value={settings.fshBackendUrl}
 									onChange={(e) =>
 										setSettings({ ...settings, fshBackendUrl: e.target.value })
 									}
 								/>
-							</div>
-							<div style={styles.formGroup}>
-								<label htmlFor="agentSecret" style={styles.label}>
-									Agent Secret
-								</label>
-								<input
-									id="agentSecret"
-									style={styles.input}
+								<TextField
+									label="Agent Secret"
+									size="small"
+									fullWidth
 									type="password"
 									placeholder="Shared secret for backend connection"
 									value={settings.agentSecret || ''}
@@ -451,66 +568,112 @@ export default function App(): JSX.Element {
 										setSettings({ ...settings, agentSecret: e.target.value })
 									}
 								/>
-							</div>
-							<div style={{ ...styles.row, gap: '16px' }}>
-								<div style={{ flex: 1 }}>
-									<label htmlFor="gmailPollInterval" style={styles.label}>
-										Gmail Poll Interval (minutes)
-									</label>
-									<select
-										id="gmailPollInterval"
-										style={styles.input}
-										value={settings.gmailPollInterval}
-										onChange={(e) =>
-											setSettings({
-												...settings,
-												gmailPollInterval: Number(e.target.value),
-											})
-										}
+								<TextField
+									label="Files Watch Directory"
+									size="small"
+									fullWidth
+									placeholder="/Users/you/Documents/fsh-job-agent-files"
+									value={settings.filesWatchDir || ''}
+									onChange={(e) =>
+										setSettings({ ...settings, filesWatchDir: e.target.value })
+									}
+									InputProps={{
+										startAdornment: (
+											<InputAdornment position="start">
+												<FolderOutlined
+													sx={{ fontSize: 16, color: 'text.disabled' }}
+												/>
+											</InputAdornment>
+										),
+									}}
+									helperText="Absolute path. Files here are sent to the FSH backend."
+								/>
+								<Stack direction="row" spacing={2}>
+									<Box flex={1}>
+										<Typography
+											variant="caption"
+											color="text.secondary"
+											display="block"
+											mb={0.5}
+										>
+											Gmail Poll Interval (min)
+										</Typography>
+										<Select
+											size="small"
+											fullWidth
+											value={settings.gmailPollInterval}
+											onChange={(e) =>
+												setSettings({
+													...settings,
+													gmailPollInterval: Number(e.target.value),
+												})
+											}
+										>
+											{POLL_INTERVALS.map((n) => (
+												<MenuItem key={n} value={n}>
+													{n}
+												</MenuItem>
+											))}
+										</Select>
+									</Box>
+									<Box flex={1}>
+										<Typography
+											variant="caption"
+											color="text.secondary"
+											display="block"
+											mb={0.5}
+										>
+											Calendar Poll Interval (min)
+										</Typography>
+										<Select
+											size="small"
+											fullWidth
+											value={settings.calendarPollInterval}
+											onChange={(e) =>
+												setSettings({
+													...settings,
+													calendarPollInterval: Number(e.target.value),
+												})
+											}
+										>
+											{POLL_INTERVALS.map((n) => (
+												<MenuItem key={n} value={n}>
+													{n}
+												</MenuItem>
+											))}
+										</Select>
+									</Box>
+								</Stack>
+								<Box>
+									<Button
+										variant="contained"
+										size="small"
+										startIcon={<SaveOutlined />}
+										onClick={handleSaveSettings}
 									>
-										{POLL_INTERVALS.map((n) => (
-											<option key={n} value={n}>
-												{n}
-											</option>
-										))}
-									</select>
-								</div>
-								<div style={{ flex: 1 }}>
-									<label htmlFor="calendarPollInterval" style={styles.label}>
-										Calendar Poll Interval (minutes)
-									</label>
-									<select
-										id="calendarPollInterval"
-										style={styles.input}
-										value={settings.calendarPollInterval}
-										onChange={(e) =>
-											setSettings({
-												...settings,
-												calendarPollInterval: Number(e.target.value),
-											})
-										}
-									>
-										{POLL_INTERVALS.map((n) => (
-											<option key={n} value={n}>
-												{n}
-											</option>
-										))}
-									</select>
-								</div>
-							</div>
-							<div style={{ marginTop: '16px' }}>
-								<button
-									type="button"
-									style={styles.btn('primary')}
-									onClick={handleSaveSettings}
-								>
-									{settingsSaved ? 'Saved!' : 'Save Settings'}
-								</button>
-							</div>
-						</div>
-					)}
-				</div>
-			</div>
-		</div>
+										Save Settings
+									</Button>
+								</Box>
+							</Stack>
+						</Collapse>
+					</CardContent>
+				</Card>
+			</Box>
+
+			<Snackbar
+				open={snackbar.open}
+				autoHideDuration={3000}
+				onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+				anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+			>
+				<Alert
+					severity={snackbar.severity}
+					variant="filled"
+					sx={{ width: '100%' }}
+				>
+					{snackbar.message}
+				</Alert>
+			</Snackbar>
+		</ThemeProvider>
 	)
 }

@@ -1,14 +1,14 @@
 # FSH Agent
 
-A local Electron desktop app that acts as an AI agent bridge for your job search. It monitors your Gmail and Google Calendar for job-related activity, captures job listings from browser windows, watches your Downloads folder for new PDFs (resumes, offer letters), and exposes all events via a WebSocket API on port 3001 for integration with external tools.
+A local Electron desktop app that acts as an AI agent bridge for your job search. It monitors your Gmail and Google Calendar for job-related activity, captures job listings from browser windows, watches your Downloads folder for new PDFs (resumes, offer letters), syncs a local file folder to the FSH web app, and exposes all events via a WebSocket connection to the webapp.
 
 ## What This App Does
 
 - **Gmail monitoring** — polls your inbox for emails with subjects matching interview, offer, application, recruiter, or hiring keywords
 - **Google Calendar monitoring** — watches your next 7 days of events and flags anything that looks like an interview or recruiter call
+- **File sync** — watches a local folder (`~/Documents/fsh-job-agent-files` by default); files are synced to the web app in real time. Upload, download, and delete files from the webapp UI.
 - **Job page capture** *(in development)* — opens a built-in browser window; automatically captures job listings when you land on supported job sites (LinkedIn, Indeed, Greenhouse, Lever, Workday, Wellfound)
-- **PDF watcher** *(in development)* — monitors your Downloads folder and forwards any new PDF files as base64 payloads via WebSocket
-- **WebSocket + HTTP server** — exposes all events on `ws://localhost:3001` and a REST health endpoint at `http://localhost:3001/health`
+- **PDF watcher** *(in development)* — monitors your Downloads folder and forwards any new PDF files as base64 payloads
 - **System tray** — runs quietly in the background with a tray icon for quick access
 
 ---
@@ -56,23 +56,31 @@ No redirect URI configuration is needed — Desktop app credentials automaticall
 
 ### Agent Secret
 
-The desktop agent connects to the FSH web app via WebSocket and must authenticate with a shared secret. This is separate from your Anthropic API key — the API key lives entirely in the web app and the agent never needs it.
+The desktop agent connects to the FSH web app via WebSocket and must authenticate with a shared secret.
 
 **Step 1 — Set the secret in the web app**
 
-In the FSH web app, go to **Settings → Security** and set an Agent Secret. This is the value the web app will require from any connecting agent.
+In the FSH web app, go to **Settings → Security** and set an Agent Secret.
 
 **Step 2 — Enter the same secret in the desktop app**
 
 In FSH Agent, open Settings and paste the same secret into the **Agent Secret** field, then click **Save Settings**.
 
-The agent stores the secret locally and sends it as a query parameter when connecting (`/ws/agent?secret=<your-secret>`). If the secret is missing from the agent settings, no connection will be attempted. If it doesn't match what the web app expects, the WebSocket connection will be rejected.
+The agent sends the secret as a query parameter when connecting (`/ws/agent?secret=<your-secret>`). If the secret is missing or doesn't match, the connection will be rejected.
+
+### File Sync
+
+By default the agent watches `~/Documents/fsh-job-agent-files`. Any file placed in that folder is automatically synced to the web app. You can change the watch folder in Settings.
+
+From the web app, use the folder icon in the header to:
+- Browse synced files
+- Download any file
+- Upload a file (it will be saved to the agent's watch folder)
+- Delete a file (removes it from disk)
 
 ---
 
 ## For Developers
-
-This section is for people building or modifying the app from source.
 
 ### Prerequisites
 
@@ -113,23 +121,36 @@ GitHub Actions builds on `macos-latest`, runs `electron-builder`, and uploads th
 
 ### Architecture
 
-- `src/main/` — Electron main process (Node.js). All system access lives here: OAuth, Gmail, Calendar, Downloads watcher, WebSocket server, IPC handlers.
+- `src/main/` — Electron main process (Node.js). All system access lives here: OAuth, Gmail, Calendar, Downloads watcher, file watcher, WebSocket server, backend connection, IPC handlers.
 - `src/preload/index.ts` — Exposes a typed `window.fshAgent` bridge to the renderer via `contextBridge`.
 - `src/renderer/` — React UI. Communicates with main exclusively through `window.fshAgent`.
 
+#### Key files
+
+| File | Purpose |
+|------|---------|
+| `src/main/index.ts` | App entry — wires all modules together, IPC handlers |
+| `src/main/backend.ts` | Outbound WebSocket connection to the webapp (`/ws/agent`); reconnects automatically |
+| `src/main/files.ts` | File watcher (chokidar), `listFiles`, `saveFile`, `deleteFile` |
+| `src/main/gmail.ts` | Gmail polling |
+| `src/main/calendar.ts` | Google Calendar polling |
+| `src/main/oauth.ts` | OAuth flow + token refresh |
+| `src/main/websocket.ts` | Local WebSocket server on port 3001 (legacy/dev) |
+
 ### Key Patterns
 
-- `browserWindow` can be `null` after the user closes it — always check and recreate with `createBrowserWindow()` before use, then use `!` non-null assertion on subsequent accesses.
-- Events flow through `broadcast()` (WebSocket) + `mainWindow.webContents.send('event', ...)` (IPC to renderer) in parallel.
+- `browserWindow` can be `null` after the user closes it — always check and recreate with `createBrowserWindow()` before use.
+- Events flow through `broadcast()` (local WebSocket + backend connection) + `mainWindow.webContents.send('event', ...)` (IPC to renderer) in parallel.
 - `electron-store` (encrypted) holds tokens and settings. Access via `store.get` / `store.set` / `store.delete`.
+- File communication with the webapp goes entirely through the persistent `/ws/agent` connection — no separate port needed.
 
 ---
 
-## WebSocket API
+## WebSocket Protocol (`/ws/agent`)
 
-Connect to `ws://localhost:3001` to receive real-time events.
+The agent connects outbound to `<FSH_BACKEND_URL>/ws/agent?secret=<AGENT_SECRET>`. All file and event communication flows through this single authenticated connection.
 
-### Event Types
+### Events sent by the agent → webapp
 
 All events follow this shape:
 
@@ -143,25 +164,29 @@ All events follow this shape:
 
 | Type | Description | Payload fields |
 |------|-------------|----------------|
-| `agent_status` | Connection confirmation or pong | `status`, `version` |
 | `email_detected` | Job-related email found in Gmail | `id`, `threadId`, `subject`, `from`, `snippet`, `date` |
-| `calendar_event` | Interview-like calendar event detected | `id`, `summary`, `start`, `end`, `description`, `isInterview` |
-| `job_captured` | Job page captured from browser | `url`, `title`, `text`, `capturedAt` |
+| `calendar_event` | Interview-like calendar event detected | `id`, `summary`, `start`, `end`, `description` |
+| `job_captured` | Job page captured from browser | `url`, `title`, `text` |
 | `new_pdf` | New PDF added to Downloads folder | `filename`, `path`, `base64`, `size` |
+| `file_added` | File added or changed in the watch folder — **metadata only, no base64** | `filename`, `path`, `size`, `mimeType` |
+| `file_removed` | File deleted from the watch folder | `path` |
+| `file_content` | Response to a `get_file` request | `requestId`, `base64`, `mimeType` |
 
-### Sending Messages
+### Messages received by the agent ← webapp
 
-```json
-{ "type": "ping" }
-```
-Responds with an `agent_status` pong.
+| Type | Description | Payload fields |
+|------|-------------|----------------|
+| `list_files` | Request all files in the watch folder (sent on connect) | *(none)* |
+| `save_file` | Write a file to the watch folder | `filename`, `base64` |
+| `delete_file` | Delete a file from the watch folder | `path` |
+| `get_file` | Request the full content of a specific file for download | `requestId`, `path` |
 
-```json
-{ "type": "set_config", "payload": { "gmailPollInterval": 10 } }
-```
-Updates a config value in the store.
+> **File content is never sent proactively.** The agent only sends base64 in response to a `get_file` request. All other file events carry metadata only, so syncing a large folder has minimal memory and bandwidth impact.
 
-### HTTP Endpoints
+---
+
+## Local WebSocket Server (port 3001)
+
+A legacy local WebSocket server runs on `ws://localhost:3001` for development use. It supports a subset of the above protocol (`list_files`, `save_file`, `email_detected`, `calendar_event`, `file_added`, `agent_status`).
 
 - `GET http://localhost:3001/health` — returns `{ "status": "ok", "clients": N }`
-- `GET http://localhost:3001/oauth/callback` — used internally by the OAuth flow

@@ -10,6 +10,9 @@ export interface AgentEvent {
 		| 'email_detected'
 		| 'calendar_event'
 		| 'new_pdf'
+		| 'file_added'
+		| 'file_removed'
+		| 'file_content'
 		| 'agent_status'
 	payload: unknown
 	timestamp: string
@@ -18,6 +21,18 @@ export interface AgentEvent {
 let wss: WebSocketServer | null = null
 const clients = new Set<WebSocket>()
 let store: Store | null = null
+let listFilesHandler: (() => void) | null = null
+let saveFileHandler: ((filename: string, base64: string) => void) | null = null
+
+export function setListFilesHandler(fn: () => void): void {
+	listFilesHandler = fn
+}
+
+export function setSaveFileHandler(
+	fn: (filename: string, base64: string) => void,
+): void {
+	saveFileHandler = fn
+}
 
 export function startWebSocketServer(storeInstance?: Store): void {
 	if (storeInstance) store = storeInstance
@@ -107,6 +122,16 @@ function handleIncoming(msg: { type: string; payload?: unknown }): void {
 				)
 			}
 			break
+		case 'list_files':
+			listFilesHandler?.()
+			break
+		case 'save_file': {
+			const p = msg.payload as { filename: string; base64: string } | undefined
+			if (p?.filename && p?.base64) {
+				saveFileHandler?.(p.filename, p.base64)
+			}
+			break
+		}
 	}
 }
 

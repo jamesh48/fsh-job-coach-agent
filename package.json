@@ -9,7 +9,7 @@
     "preview": "electron-vite preview",
     "start": "electron .",
     "package": "electron-builder --mac",
-    "lint": "biome check src",
+    "lint": "biome check --write src",
     "lint:fix": "biome check --write src",
     "format": "biome format --write src"
   },
@@ -25,7 +25,13 @@
     ],
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.productivity"
     },
@@ -34,6 +40,10 @@
     }
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.9",
+    "@mui/material": "^7.3.9",
     "chokidar": "^3.6.0",
     "electron-store": "^8.2.0",
     "express": "^4.18.2",

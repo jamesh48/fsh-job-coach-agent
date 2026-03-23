@@ -8,6 +8,14 @@ let reconnectDelay = 2000
 let store: Store | null = null
 let stopped = false
 let onStatusChange: ((connected: boolean) => void) | null = null
+let messageHandler: ((msg: { type: string; payload?: unknown }) => void) | null =
+	null
+
+export function setMessageHandler(
+	fn: (msg: { type: string; payload?: unknown }) => void,
+): void {
+	messageHandler = fn
+}
 
 export function startBackendConnection(
 	storeInstance: Store,
@@ -47,18 +55,41 @@ function connect(): void {
 
 	if (!backendUrl || !secret) return
 
-	const wsUrl = backendUrl
+	const normalized = /^https?:\/\//.test(backendUrl)
+		? backendUrl
+		: `http://${backendUrl}`
+
+	const wsUrl = normalized
 		.replace(/^https:\/\//, 'wss://')
 		.replace(/^http:\/\//, 'ws://')
 		.replace(/\/$/, '')
 
-	const url = `${wsUrl}/ws/agent?secret=${encodeURIComponent(secret)}`
+	let url: string
+	try {
+		url = new URL(`${wsUrl}/ws/agent`).toString()
+		url += `?secret=${encodeURIComponent(secret)}`
+	} catch {
+		console.error('Invalid backend URL:', backendUrl)
+		return
+	}
 
 	ws = new WebSocket(url)
 
 	ws.on('open', () => {
 		reconnectDelay = 2000
 		onStatusChange?.(true)
+	})
+
+	ws.on('message', (data: Buffer) => {
+		try {
+			const msg = JSON.parse(data.toString()) as {
+				type: string
+				payload?: unknown
+			}
+			messageHandler?.(msg)
+		} catch {
+			// ignore malformed messages
+		}
 	})
 
 	ws.on('close', () => {

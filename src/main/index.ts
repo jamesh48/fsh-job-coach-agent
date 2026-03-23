@@ -14,11 +14,21 @@ import Store from 'electron-store'
 import {
 	forwardToBackend,
 	isBackendConnected,
+	setMessageHandler,
 	startBackendConnection,
 } from './backend'
 import { setupBrowserCapture } from './browser'
 import { startCalendarWatcher, stopCalendarWatcher } from './calendar'
 import { startDownloadsWatcher } from './downloads'
+import {
+	DEFAULT_FILES_DIR,
+	deleteFile,
+	listFiles,
+	readFileEvent,
+	saveFile,
+	startFilesWatcher,
+	stopFilesWatcher,
+} from './files'
 import { startGmailWatcher, stopGmailWatcher } from './gmail'
 import {
 	initiateOAuthFlow,
@@ -26,7 +36,12 @@ import {
 	startOAuthServer,
 } from './oauth'
 import type { AgentEvent } from './websocket'
-import { broadcast as broadcastLocal, startWebSocketServer } from './websocket'
+import {
+	broadcast as broadcastLocal,
+	setListFilesHandler,
+	setSaveFileHandler,
+	startWebSocketServer,
+} from './websocket'
 
 function broadcast(event: AgentEvent): void {
 	broadcastLocal(event)
@@ -191,6 +206,95 @@ app.whenReady().then(async () => {
 		})
 	})
 
+	const filesDir =
+		(store.get('filesWatchDir', DEFAULT_FILES_DIR) as string) ||
+		DEFAULT_FILES_DIR
+
+	const broadcastFile = (file: ReturnType<typeof listFiles>[number]): void => {
+		broadcast({
+			type: 'file_added',
+			payload: file,
+			timestamp: new Date().toISOString(),
+		})
+		mainWindow?.webContents.send('event', {
+			type: 'file_added',
+			payload: file,
+			timestamp: new Date().toISOString(),
+		})
+	}
+
+	const broadcastFileRemoved = (filePath: string): void => {
+		broadcast({
+			type: 'file_removed',
+			payload: { path: filePath },
+			timestamp: new Date().toISOString(),
+		})
+	}
+
+	startFilesWatcher(filesDir, broadcastFile, broadcastFileRemoved)
+
+	setListFilesHandler(() => {
+		const currentDir =
+			(store.get('filesWatchDir', DEFAULT_FILES_DIR) as string) ||
+			DEFAULT_FILES_DIR
+		listFiles(currentDir).forEach(broadcastFile)
+	})
+
+	setSaveFileHandler((filename, base64) => {
+		const currentDir =
+			(store.get('filesWatchDir', DEFAULT_FILES_DIR) as string) ||
+			DEFAULT_FILES_DIR
+		saveFile(currentDir, filename, base64)
+	})
+
+	setMessageHandler((msg) => {
+		const currentDir =
+			(store.get('filesWatchDir', DEFAULT_FILES_DIR) as string) ||
+			DEFAULT_FILES_DIR
+
+		if (msg.type === 'list_files') {
+			listFiles(currentDir).forEach((file) => {
+				forwardToBackend({
+					type: 'file_added',
+					payload: file,
+					timestamp: new Date().toISOString(),
+				})
+			})
+		}
+
+		if (msg.type === 'save_file') {
+			const p = msg.payload as { filename: string; base64: string } | undefined
+			if (p?.filename && p?.base64) {
+				saveFile(currentDir, p.filename, p.base64)
+			}
+		}
+
+		if (msg.type === 'delete_file') {
+			const p = msg.payload as { path: string } | undefined
+			if (p?.path) {
+				deleteFile(p.path)
+			}
+		}
+
+		if (msg.type === 'get_file') {
+			const p = msg.payload as { requestId: string; path: string } | undefined
+			if (p?.requestId && p?.path) {
+				const event = readFileEvent(p.path)
+				if (event) {
+					forwardToBackend({
+						type: 'file_content',
+						payload: {
+							requestId: p.requestId,
+							base64: event.base64,
+							mimeType: event.mimeType,
+						},
+						timestamp: new Date().toISOString(),
+					})
+				}
+			}
+		}
+	})
+
 	// IPC handlers
 	ipcMain.handle('get-auth-status', () => {
 		const tokens = store.get('tokens')
@@ -248,6 +352,7 @@ app.whenReady().then(async () => {
 			googleClientId: store.get('googleClientId', ''),
 			googleClientSecret: store.get('googleClientSecret', ''),
 			agentSecret: store.get('agentSecret', ''),
+			filesWatchDir: store.get('filesWatchDir', DEFAULT_FILES_DIR),
 		}
 	})
 
@@ -261,6 +366,11 @@ app.whenReady().then(async () => {
 			store.set('googleClientSecret', settings.googleClientSecret)
 		if (settings.agentSecret !== undefined)
 			store.set('agentSecret', settings.agentSecret)
+		if (settings.filesWatchDir !== undefined) {
+			const newDir = settings.filesWatchDir || DEFAULT_FILES_DIR
+			store.set('filesWatchDir', newDir)
+			startFilesWatcher(newDir, broadcastFile)
+		}
 		return { success: true }
 	})
 
@@ -273,6 +383,10 @@ app.whenReady().then(async () => {
 	app.on('activate', () => {
 		if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
 	})
+})
+
+app.on('before-quit', () => {
+	stopFilesWatcher()
 })
 
 app.on('window-all-closed', () => {
