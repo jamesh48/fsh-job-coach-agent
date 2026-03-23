@@ -8,8 +8,9 @@ let reconnectDelay = 2000
 let store: Store | null = null
 let stopped = false
 let onStatusChange: ((connected: boolean) => void) | null = null
-let messageHandler: ((msg: { type: string; payload?: unknown }) => void) | null =
-	null
+let messageHandler:
+	| ((msg: { type: string; payload?: unknown }) => void)
+	| null = null
 
 export function setMessageHandler(
 	fn: (msg: { type: string; payload?: unknown }) => void,

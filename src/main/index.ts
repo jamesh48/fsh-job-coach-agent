@@ -16,6 +16,7 @@ import {
 	isBackendConnected,
 	setMessageHandler,
 	startBackendConnection,
+	stopBackendConnection,
 } from './backend'
 import { setupBrowserCapture } from './browser'
 import { startCalendarWatcher, stopCalendarWatcher } from './calendar'
@@ -359,6 +360,7 @@ app.whenReady().then(async () => {
 	ipcMain.handle('save-settings', (_, settings) => {
 		store.set('gmailPollInterval', settings.gmailPollInterval)
 		store.set('calendarPollInterval', settings.calendarPollInterval)
+
 		store.set('fshBackendUrl', settings.fshBackendUrl)
 		if (settings.googleClientId !== undefined)
 			store.set('googleClientId', settings.googleClientId)
@@ -371,6 +373,12 @@ app.whenReady().then(async () => {
 			store.set('filesWatchDir', newDir)
 			startFilesWatcher(newDir, broadcastFile)
 		}
+		// Reset Websocket connection on settings change
+		stopBackendConnection()
+		startBackendConnection(store as any, (connected) => {
+			mainWindow?.webContents.send('backend-status', { connected })
+		})
+
 		return { success: true }
 	})
 
