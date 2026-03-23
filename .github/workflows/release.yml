@@ -18,6 +18,11 @@ jobs:
         with:
           node-version: 24
 
+      - name: Bump version from tag
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          npm version $VERSION --no-git-tag-version
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
