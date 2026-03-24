@@ -44,7 +44,10 @@ export function isBackendConnected(): boolean {
 
 export function forwardToBackend(event: AgentEvent): void {
 	if (ws?.readyState === WebSocket.OPEN) {
-		ws.send(JSON.stringify(event))
+		ws.send(JSON.stringify(event), (err) => {
+			if (err)
+				console.error(`[backend] send failed (${event.type}):`, err.message)
+		})
 	}
 }
 
