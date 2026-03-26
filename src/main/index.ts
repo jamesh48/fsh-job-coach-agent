@@ -49,6 +49,35 @@ function broadcast(event: AgentEvent): void {
 	forwardToBackend(event)
 }
 
+function startGoogleWatchers(): void {
+	stopGmailWatcher()
+	stopCalendarWatcher()
+	startGmailWatcher(store as any, (email) => {
+		mainWindow?.webContents.send('event', {
+			type: 'email_detected',
+			payload: email,
+			timestamp: new Date().toISOString(),
+		})
+		broadcast({
+			type: 'email_detected',
+			payload: email,
+			timestamp: new Date().toISOString(),
+		})
+	})
+	startCalendarWatcher(store as any, (event) => {
+		mainWindow?.webContents.send('event', {
+			type: 'calendar_event',
+			payload: event,
+			timestamp: new Date().toISOString(),
+		})
+		broadcast({
+			type: 'calendar_event',
+			payload: event,
+			timestamp: new Date().toISOString(),
+		})
+	})
+}
+
 // Initialize store
 const store = new Store({
 	encryptionKey: 'fsh-agent-secret-key',
@@ -104,12 +133,12 @@ function createBrowserWindow(): void {
 		browserWindow = null
 	})
 	setupBrowserCapture(browserWindow, (job) => {
-		broadcast({
+		mainWindow?.webContents.send('event', {
 			type: 'job_captured',
 			payload: job,
 			timestamp: new Date().toISOString(),
 		})
-		mainWindow?.webContents.send('event', {
+		broadcast({
 			type: 'job_captured',
 			payload: job,
 			timestamp: new Date().toISOString(),
@@ -165,42 +194,19 @@ app.whenReady().then(async () => {
 	if (tokens) {
 		try {
 			await refreshTokensIfNeeded(store as any)
-			startGmailWatcher(store as any, (email) => {
-				broadcast({
-					type: 'email_detected',
-					payload: email,
-					timestamp: new Date().toISOString(),
-				})
-				mainWindow?.webContents.send('event', {
-					type: 'email_detected',
-					payload: email,
-					timestamp: new Date().toISOString(),
-				})
-			})
-			startCalendarWatcher(store as any, (event) => {
-				broadcast({
-					type: 'calendar_event',
-					payload: event,
-					timestamp: new Date().toISOString(),
-				})
-				mainWindow?.webContents.send('event', {
-					type: 'calendar_event',
-					payload: event,
-					timestamp: new Date().toISOString(),
-				})
-			})
+			startGoogleWatchers()
 		} catch (err) {
 			console.error('Failed to start watchers:', err)
 		}
 	}
 
 	startDownloadsWatcher((pdf) => {
-		broadcast({
+		mainWindow?.webContents.send('event', {
 			type: 'new_pdf',
 			payload: pdf,
 			timestamp: new Date().toISOString(),
 		})
-		mainWindow?.webContents.send('event', {
+		broadcast({
 			type: 'new_pdf',
 			payload: pdf,
 			timestamp: new Date().toISOString(),
@@ -212,12 +218,12 @@ app.whenReady().then(async () => {
 		DEFAULT_FILES_DIR
 
 	const broadcastFile = (file: ReturnType<typeof listFiles>[number]): void => {
-		broadcast({
+		mainWindow?.webContents.send('event', {
 			type: 'file_added',
 			payload: file,
 			timestamp: new Date().toISOString(),
 		})
-		mainWindow?.webContents.send('event', {
+		broadcast({
 			type: 'file_added',
 			payload: file,
 			timestamp: new Date().toISOString(),
@@ -309,6 +315,7 @@ app.whenReady().then(async () => {
 	ipcMain.handle('initiate-oauth', async () => {
 		try {
 			await initiateOAuthFlow(store as any)
+			startGoogleWatchers()
 			return { success: true }
 		} catch (err: any) {
 			return { success: false, error: err.message }

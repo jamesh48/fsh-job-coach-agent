@@ -21,7 +21,7 @@ export function startGmailWatcher(
 	store: Store,
 	onEmail: (email: EmailEvent) => void,
 ): void {
-	const seenIds = new Set<string>()
+	const seenIds = new Set<string>(store.get('seenEmailIds', []) as string[])
 
 	const poll = async (): Promise<void> => {
 		try {
@@ -39,7 +39,6 @@ export function startGmailWatcher(
 
 			for (const msg of messages) {
 				if (!msg.id || seenIds.has(msg.id)) continue
-				seenIds.add(msg.id)
 
 				const detail = await gmail.users.messages.get({
 					userId: 'me',
@@ -61,6 +60,9 @@ export function startGmailWatcher(
 					snippet: detail.data.snippet || '',
 					date: getHeader('Date'),
 				})
+
+				seenIds.add(msg.id)
+				store.set('seenEmailIds', [...seenIds])
 			}
 		} catch (err) {
 			console.error('Gmail poll error:', err)
